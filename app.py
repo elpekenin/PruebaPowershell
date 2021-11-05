@@ -23,9 +23,10 @@ DATABASE_NAME = "TFG"
 database = MongoClient(DATABASE_IP)[DATABASE_NAME]
 
 class BaseHandler(AbstractRequestHandler):
+    amazon: bool = False
     def can_handle(self, handler_input) -> bool:
         return ask_utils.is_request_type(
-            "AMAZON." if self.amazon else "" + self.__class__.__name__.split("Handler")[0]
+            "AMAZON." * self.amazon + self.__class__.__name__.split("Handler")[0]
         )(handler_input)
 
 
