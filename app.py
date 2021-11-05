@@ -31,7 +31,9 @@ class BaseHandler(AbstractRequestHandler):
 
 class CustomHandler(AbstractRequestHandler):
     def can_handle(self, handler_input) -> bool:
-        return ask_utils.is_intent_name(self.__class__.__name__.split("Handler")[0])(handler_input)
+        return ask_utils.is_intent_name(
+            self.__class__.__name__.split("Handler")[0]
+        )(handler_input)
 
 
 class LaunchRequestHandler(BaseHandler):
