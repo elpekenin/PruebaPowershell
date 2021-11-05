@@ -24,6 +24,7 @@ database = MongoClient(DATABASE_IP)[DATABASE_NAME]
 
 class BaseHandler(AbstractRequestHandler):
     amazon: bool = False
+
     def can_handle(self, handler_input) -> bool:
         return ask_utils.is_request_type(
             "AMAZON." * self.amazon + self.__class__.__name__.split("Handler")[0]
@@ -44,7 +45,7 @@ class LaunchRequestHandler(BaseHandler):
         return (
             handler_input.response_builder
                 .speak(speak_output)
-                .ask(speak_output)
+                # .ask(speak_output)
                 .response
         )
 
