@@ -54,6 +54,7 @@ def check_login(func: Callable, *args, **kwargs) -> Callable: #decorador para co
     return wrapper
 
 # Definimos los handlers ==========================================================================
+# ===== Base
 class BaseHandler(AbstractRequestHandler): 
     """Objeto base para los handlers de Amazon, evitamos repetir el código de la función can_handle"""
 
@@ -73,7 +74,7 @@ class CustomHandler(AbstractRequestHandler):
             self.__class__.__name__.split("Handler")[0]
         )(handler_input)
 
-
+# ===== Handlers
 class LaunchRequestHandler(BaseHandler):
     @check_login
     def handle(self, handler_input: HandlerInput) -> Response:
@@ -88,6 +89,7 @@ class LaunchRequestHandler(BaseHandler):
 
 
 class AsignaturaIntentHandler(CustomHandler):
+    @check_login
     def handle(self, handler_input: HandlerInput) -> Response:
         asignatura = ask_utils.request_util.get_slot(handler_input, "AsignaturaSlot").value
         speak_output: str =  f"Información de {asignatura}, okey"
