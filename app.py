@@ -22,16 +22,30 @@ DATABASE_IP = "192.168.1.9"
 DATABASE_NAME = "TFG"
 database = MongoClient(DATABASE_IP)[DATABASE_NAME]
 
-class BaseHandler(AbstractRequestHandler):
-    amazon: bool = False
+# Funciones que nos ayudarán ======================================================================
+def user_login(user_id: str) -> dict:
+    """Devuelve un diccionario con los datos del usuario, o None si no está registrado"""
 
+    return database['users'].find_one(
+        {'_id': user_id},
+        {'_id': False}
+    )
+    
+
+# Definimos los handlers ==========================================================================
+class BaseHandler(AbstractRequestHandler): 
+    """Objeto base para los handlers de Amazon, evitamos repetir el código de la función can_handle"""
+
+    amazon: bool = False
     def can_handle(self, handler_input) -> bool:
         return ask_utils.is_request_type(
             "AMAZON." * self.amazon + self.__class__.__name__.split("Handler")[0]
         )(handler_input)
 
 
-class CustomHandler(AbstractRequestHandler):
+class CustomHandler(AbstractRequestHandler): 
+    """Objeto base para los handlers de nuestros intents, evitamos repetir el código de la función can_handle"""
+
     def can_handle(self, handler_input) -> bool:
         return ask_utils.is_intent_name(
             self.__class__.__name__.split("Handler")[0]
@@ -40,7 +54,13 @@ class CustomHandler(AbstractRequestHandler):
 
 class LaunchRequestHandler(BaseHandler):
     def handle(self, handler_input) -> Response:
-        speak_output: str =  "Bienvenido a info uni; tengo información de asignaturas, profesores, horarios y mucho más. Que quieres hacer hoy?"
+        # comprobamos los datos del usuario, o le pedimos que se registre
+        datos = user_login(user_id)
+
+        if datos is None:
+            speak_output: str = "Dime tu titulación y curso para poder usar la skill"
+        else:
+            speak_output: str =  "Bienvenido a info uni; tengo información de asignaturas, profesores, horarios y mucho más. Que quieres hacer hoy?"
 
         return (
             handler_input.response_builder
@@ -143,27 +163,27 @@ class CatchAllExceptionHandler(AbstractExceptionHandler):
         )
 
 
+# Creamos el SkillAdapter a partir de todos los handlers ==========================================
 skill_builder.add_request_handler(LaunchRequestHandler())
 skill_builder.add_request_handler(AsignaturaIntentHandler())
 skill_builder.add_request_handler(HelpIntentHandler())
 skill_builder.add_request_handler(CancelOrStopIntentHandler())
 skill_builder.add_request_handler(FallbackIntentHandler())
 skill_builder.add_request_handler(SessionEndedRequestHandler()) 
-#IntentReflectorHandler is last so it doesn't override other handlers
-skill_builder.add_request_handler(IntentReflectorHandler())
+skill_builder.add_request_handler(IntentReflectorHandler()) #último para que no sobre-escriba
 skill_builder.add_exception_handler(CatchAllExceptionHandler())
-
 skill_adapter = SkillAdapter(
     skill=skill_builder.create(),
     skill_id=SKILL_ID,
     app=app
 )
 
-@app.get("/")
+# Bindeamos la funcionalidad a las rutas del servidor =============================================
+@app.get("/") #hello world al hacer GET
 def hello_world():
     return "Hello world!"
 
-@app.post("/")
+@app.post("/") #API haciendo POST
 def invoke_skill():
     return skill_adapter.dispatch_request()
 
