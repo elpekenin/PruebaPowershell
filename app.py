@@ -37,6 +37,7 @@ class BaseHandler(AbstractRequestHandler):
     """Objeto base para los handlers de Amazon, evitamos repetir el código de la función can_handle"""
 
     amazon: bool = False
+    
     def can_handle(self, handler_input) -> bool:
         return ask_utils.is_request_type(
             "AMAZON." * self.amazon + self.__class__.__name__.split("Handler")[0]
