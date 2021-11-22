@@ -5,8 +5,7 @@ logging.basicConfig(level=logging.INFO, filename="app.log", filemode="w")
 import ask_sdk_core.utils as ask_utils
 from ask_sdk_core.skill_builder import SkillBuilder
 from flask_ask_sdk.skill_adapter import SkillAdapter
-from ask_sdk_core.dispatch_components import AbstractRequestHandler
-from ask_sdk_core.dispatch_components import AbstractExceptionHandler
+from ask_sdk_core.dispatch_components import AbstractRequestHandler, AbstractExceptionHandler
 from ask_sdk_core.handler_input import HandlerInput
 from ask_sdk_model import Response
 SKILL_ID = "amzn1.ask.skill.890dcdea-cae2-42fe-b34b-504e605f5b38"
@@ -56,7 +55,9 @@ class CustomHandler(AbstractRequestHandler):
 class LaunchRequestHandler(BaseHandler):
     def handle(self, handler_input) -> Response:
         # comprobamos los datos del usuario, o le pedimos que se registre
+        user_id = handler_input.request_envelope.session.user.user_id
         datos = user_login(user_id)
+        logger.info(datos)
 
         if datos is None:
             speak_output: str = "Dime tu titulación y curso para poder usar la skill"
