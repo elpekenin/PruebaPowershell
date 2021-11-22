@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 import logging
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, filename="app.log", filemode="w")
@@ -191,7 +190,6 @@ def invoke_skill():
 
 if __name__ == "__main__":
     pass   
-=======
 import logging
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, filename="app.log", filemode="w")
@@ -384,4 +382,3 @@ def invoke_skill():
 
 if __name__ == "__main__":
     pass   
->>>>>>> 61d2eacaf195b71fe2ade92913dd97fcba91d846
