@@ -37,7 +37,6 @@ def check_login(func: Callable, *args, **kwargs) -> Callable: #decorador para co
     @functools.wraps(func)
     def wrapper(*args, **kwargs) -> Response:
         handler_input = args[1] #arg[0] es self, arg[1] es el handler_input
-        logger.info(type(handler_input))
 
         # comprobamos los datos del usuario en la base de datos
         user_id = handler_input.request_envelope.session.user.user_id
