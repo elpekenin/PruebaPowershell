@@ -25,22 +25,31 @@ from collections.abc import Callable
 import functools
 
 # Funciones que nos ayudarán ======================================================================
-def user_login(user_id: str) -> Union[dict, None]:
-    """Devuelve un diccionario con los datos del usuario, o None si no está registrado"""
+def get_datos(func: Callable, *args, **kwargs) -> Callable: 
+    """Este decorador sirve para obtener la info del usuario en nuestra base de datos, a partir del handler_input"""
 
-    return database["users"].find_one(
-        {"_id": user_id},
-        {"_id": False}
-    )
-    
-def check_login(func: Callable, *args, **kwargs) -> Callable: #decorador para comprobar si un usuario se ha dado de alta en el sistema
     @functools.wraps(func)
-    def wrapper(*args, **kwargs) -> Response:
-        handler_input = args[1] #arg[0] es self, arg[1] es el handler_input
+    def wrapper(*args, **kwargs) -> Response: #creamos función decorada
+        return func(
+            *args,
+            #args[0] es self porque las funciones que estamos decorando son métodos, args[1] es handler_input de donde sacamos la id del usuario
+            #a la función decorada le pasamos los datos (un dict) como parámetro, o None si el usuario no está en el sistema
+            datos=database["users"].find_one( 
+                {"_id": args[1].request_envelope.session.user.user_id},
+                {"_id": False}
+            ),
+            **kwargs
+        )
+    return wrapper #devolvemos la función decorada
 
-        # comprobamos los datos del usuario en la base de datos
-        user_id = handler_input.request_envelope.session.user.user_id
-        datos = user_login(user_id)
+
+def check_datos(func: Callable, *args, **kwargs) -> Callable:
+    """Decorador que comprueba si un usuario se ha dado de alta en el sistema, de estarlo se llama a la función que estamos decorando, y si no lo está, le pedimos que se registre"""
+
+    @functools.wraps(func)
+    @get_datos #este decorador hace uso de los datos del usuario, asi que se añade ese decorador
+    def wrapper(*args, **kwargs) -> Response: 
+        datos = kwargs.get('datos')
 
         if datos is None: #si no está registrado, le decimos que lo haga
             return (
@@ -49,8 +58,10 @@ def check_login(func: Callable, *args, **kwargs) -> Callable: #decorador para co
                     .response
             )
 
-        return func(*args, **kwargs) #si está registrado, se llama a la función decorada
+        #si está registrado, se llama a la función decorada pasando los datos del usuario (van en el kwargs gracias al decorador get_datos)
+        return func(*args, **kwargs) 
     return wrapper
+
 
 # Definimos los handlers ==========================================================================
 # ===== Base
@@ -75,8 +86,8 @@ class CustomHandler(AbstractRequestHandler):
 
 # ===== Handlers
 class LaunchRequestHandler(BaseHandler):
-    @check_login
-    def handle(self, handler_input: HandlerInput) -> Response:
+    @check_datos
+    def handle(self, handler_input: HandlerInput, *args, **kwargs) -> Response:
         speak_output: str =  "Bienvenido a info uni; tengo información de asignaturas, profesores, horarios y mucho más. Que quieres hacer hoy?"
 
         return (
@@ -88,10 +99,17 @@ class LaunchRequestHandler(BaseHandler):
 
 
 class AsignaturaIntentHandler(CustomHandler):
-    @check_login
-    def handle(self, handler_input: HandlerInput) -> Response:
+    @check_datos  #necesitamos que el usuario esté registrado para poder filtrar segun su titulación
+    def handle(self, handler_input: HandlerInput, *args, **kwargs) -> Response:
         asignatura = ask_utils.request_util.get_slot(handler_input, "AsignaturaSlot").value
-        speak_output: str =  f"Información de {asignatura}, okey"
+        speak_output: str =  f"Información de la asignatura {asignatura}"
+
+        datos = kwargs.get('datos')
+
+        if datos is not None:
+            speak_output += f', de la titulación {datos.get("titulacion")}'
+
+        speak_output += ", okey"
 
         return (
             handler_input.response_builder
@@ -104,7 +122,8 @@ class AsignaturaIntentHandler(CustomHandler):
 class HelpIntentHandler(BaseHandler):
     amazon: bool = True
 
-    def handle(self, handler_input: HandlerInput) -> Response:
+    @get_datos
+    def handle(self, handler_input: HandlerInput, *args, **kwargs) -> Response:
         speak_output: str =  "Las opciones disponibles son: Asignatura, Horario, Profesor. Qué quieres consultar?"
 
         return (
@@ -122,7 +141,8 @@ class CancelOrStopIntentHandler(AbstractRequestHandler):
             ask_utils.is_intent_name("AMAZON.StopIntent")(handler_input)
         )
 
-    def handle(self, handler_input: HandlerInput) -> Response:
+    @get_datos
+    def handle(self, handler_input: HandlerInput, *args, **kwargs) -> Response:
         speak_output: str =  "Hasta luego"
 
         return (
@@ -135,7 +155,8 @@ class CancelOrStopIntentHandler(AbstractRequestHandler):
 class FallbackIntentHandler(BaseHandler):
     amazon: bool = True
 
-    def handle(self, handler_input: HandlerInput) -> Response:
+    @get_datos
+    def handle(self, handler_input: HandlerInput, *args, **kwargs) -> Response:
         speech = "No estoy seguro. Puedes decir Ayuda para ver las opciones disponibles. Qué quieres hacer?"
         reprompt = "No te entendí. Con qué puedo ayudarte?"
 
@@ -143,6 +164,7 @@ class FallbackIntentHandler(BaseHandler):
 
 
 class SessionEndedRequestHandler(BaseHandler):
+    @get_datos
     def handle(self, handler_input: HandlerInput) -> Response:
         # Any cleanup logic goes here.
         return handler_input.response_builder.response
@@ -152,7 +174,8 @@ class IntentReflectorHandler(AbstractRequestHandler):
     def can_handle(self, handler_input: HandlerInput) -> bool:
         return ask_utils.is_request_type("IntentRequest")(handler_input)
 
-    def handle(self, handler_input: HandlerInput):
+    @get_datos
+    def handle(self, handler_input: HandlerInput, *args, **kwargs):
         intent_name = ask_utils.get_intent_name(handler_input)
         speak_output: str =  f"Se ha activado el intent {intent_name}."
 
@@ -168,7 +191,8 @@ class CatchAllExceptionHandler(AbstractExceptionHandler):
     def can_handle(self, handler_input: HandlerInput, exception) -> bool:
         return True
 
-    def handle(self, handler_input: HandlerInput, exception) -> Response:
+    @get_datos
+    def handle(self, handler_input: HandlerInput, exception, *args, **kwargs) -> Response:
         logger.error(exception, exc_info=True)
 
         speak_output: str =  "No pude hacer lo que has pedido, prueba de nuevo."

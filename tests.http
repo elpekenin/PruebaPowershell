@@ -1,0 +1,11 @@
+@URL = https://elpekenin.tk
+
+GET {{URL}}
+
+###
+POST {{URL}}
+Content-Type: application/json
+
+{
+
+}
