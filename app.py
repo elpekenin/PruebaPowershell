@@ -101,20 +101,15 @@ class LaunchRequestHandler(BaseHandler):
 class AsignaturaIntentHandler(CustomHandler):
     @check_datos  #necesitamos que el usuario esté registrado para poder filtrar segun su titulación
     def handle(self, handler_input: HandlerInput, *args, **kwargs) -> Response:
-        asignatura = ask_utils.request_util.get_slot(handler_input, "AsignaturaSlot").value
-        speak_output: str =  f"Información de la asignatura {asignatura}"
-
         datos = kwargs.get('datos')
+        asignatura = ask_utils.request_util.get_slot(handler_input, "AsignaturaSlot").value
 
-        if datos is not None:
-            speak_output += f', de la titulación {datos.get("titulacion")}'
-
-        speak_output += ", okey"
+        speak_output: str =  f"Información de la asignatura {asignatura}, de la titulación {datos['titulacion']}, okey"
 
         return (
             handler_input.response_builder
                 .speak(speak_output)
-                # .ask(speak_output)
+                # .ask(speak_output) 
                 .response
         )
 
@@ -175,7 +170,7 @@ class IntentReflectorHandler(AbstractRequestHandler):
         return ask_utils.is_request_type("IntentRequest")(handler_input)
 
     @get_datos
-    def handle(self, handler_input: HandlerInput, *args, **kwargs):
+    def handle(self, handler_input: HandlerInput, *args, **kwargs) -> Response:
         intent_name = ask_utils.get_intent_name(handler_input)
         speak_output: str =  f"Se ha activado el intent {intent_name}."
 
