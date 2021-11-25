@@ -10,7 +10,6 @@ from flask_ask_sdk.skill_adapter import SkillAdapter
 from ask_sdk_core.dispatch_components import AbstractRequestHandler, AbstractExceptionHandler
 from ask_sdk_core.handler_input import HandlerInput
 from ask_sdk_model import Response
-skill_builder = SkillBuilder()
 
 from flask import Flask, render_template, request
 import json
@@ -201,6 +200,7 @@ class CatchAllExceptionHandler(AbstractExceptionHandler):
 
 
 # Creamos el SkillAdapter a partir de todos los handlers ==========================================
+skill_builder = SkillBuilder()
 skill_builder.add_request_handler(LaunchRequestHandler())
 skill_builder.add_request_handler(AsignaturaIntentHandler())
 skill_builder.add_request_handler(HelpIntentHandler())
@@ -209,6 +209,7 @@ skill_builder.add_request_handler(FallbackIntentHandler())
 skill_builder.add_request_handler(SessionEndedRequestHandler()) 
 skill_builder.add_request_handler(IntentReflectorHandler()) #último para que no sobre-escriba
 skill_builder.add_exception_handler(CatchAllExceptionHandler())
+
 skill_adapter = SkillAdapter(
     skill=skill_builder.create(),
     skill_id=info.skill_id,
@@ -220,7 +221,7 @@ skill_adapter = SkillAdapter(
 def hello_world():
     return "Hello world!"
 
-@app.post("/") #API haciendo POST
+@app.post("/") #atiende peticiones POST
 def invoke_skill():
     return skill_adapter.dispatch_request()
 
