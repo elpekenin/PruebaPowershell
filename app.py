@@ -82,7 +82,7 @@ def buscar(input: str, filtro: None, campo: str = "nombre", coleccion: str = "as
         list([elemento[campo] for elemento in database[coleccion].find(filtro, {campo: True})]), #hacemos una lista con todos los valores
         n=1, #solo devolvemos un valor
         cutoff=0, #no buscamos una similaridad mínima, para garantizar que se encuentra un resultado
-    )[0] #devolvemos el string en vez de la lista
+    )[0]
 
 # Definimos los handlers ==========================================================================
 # ===== Base
@@ -141,7 +141,6 @@ class AsignaturaIntentHandler(CustomHandler):
 class HelpIntentHandler(BaseHandler):
     amazon: bool = True
 
-    @get_datos
     def handle(self, handler_input: HandlerInput, *args, **kwargs) -> Response:
         speak_output: str =  "Las opciones disponibles son: Asignatura, Horario, Profesor. Qué quieres consultar?"
 
@@ -160,7 +159,6 @@ class CancelOrStopIntentHandler(AbstractRequestHandler):
             ask_utils.is_intent_name("AMAZON.StopIntent")(handler_input)
         )
 
-    @get_datos
     def handle(self, handler_input: HandlerInput, *args, **kwargs) -> Response:
         speak_output: str =  "Hasta luego"
 
@@ -174,7 +172,6 @@ class CancelOrStopIntentHandler(AbstractRequestHandler):
 class FallbackIntentHandler(BaseHandler):
     amazon: bool = True
 
-    @get_datos
     def handle(self, handler_input: HandlerInput, *args, **kwargs) -> Response:
         speech = "No estoy seguro. Puedes decir Ayuda para ver las opciones disponibles. Qué quieres hacer?"
         reprompt = "No te entendí. Con qué puedo ayudarte?"
@@ -183,7 +180,6 @@ class FallbackIntentHandler(BaseHandler):
 
 
 class SessionEndedRequestHandler(BaseHandler):
-    @get_datos
     def handle(self, handler_input: HandlerInput, *args, **kwargs) -> Response:
         # Any cleanup logic goes here.
         return handler_input.response_builder.response
@@ -193,7 +189,6 @@ class IntentReflectorHandler(AbstractRequestHandler):
     def can_handle(self, handler_input: HandlerInput) -> bool:
         return ask_utils.is_request_type("IntentRequest")(handler_input)
 
-    @get_datos
     def handle(self, handler_input: HandlerInput, *args, **kwargs) -> Response:
         intent_name = ask_utils.get_intent_name(handler_input)
         speak_output: str =  f"Se ha activado el intent {intent_name}."
@@ -210,7 +205,6 @@ class CatchAllExceptionHandler(AbstractExceptionHandler):
     def can_handle(self, handler_input: HandlerInput, exception) -> bool:
         return True
 
-    @get_datos
     def handle(self, handler_input: HandlerInput, exception, *args, **kwargs) -> Response:
         logger.error(exception, exc_info=True)
 
