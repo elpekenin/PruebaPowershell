@@ -14,14 +14,13 @@ from ask_sdk_model import Response
 from flask import Flask, render_template, request
 import json
 app = Flask(__name__)
-
 from pymongo import MongoClient
 database = MongoClient(info.database_ip)[info.database_name]
 
 from typing import Union
 from collections.abc import Callable
-
 import functools
+from difflib  import get_close_matches
 
 # Funciones que nos ayudarán ======================================================================
 def get_datos(func: Callable, *args, **kwargs) -> Callable: 
@@ -29,15 +28,17 @@ def get_datos(func: Callable, *args, **kwargs) -> Callable:
 
     @functools.wraps(func)
     def wrapper(*args, **kwargs) -> Response: #creamos función decorada
+        #args[0] es self porque las funciones que estamos decorando son métodos, args[1] es handler_input de donde sacamos la id del usuario
+        #a la función decorada le pasamos los datos (un dict) como parámetro, o None si el usuario no está en el sistema
+        handler_input = args[1]
+
         return func(
             *args,
-            #args[0] es self porque las funciones que estamos decorando son métodos, args[1] es handler_input de donde sacamos la id del usuario
-            #a la función decorada le pasamos los datos (un dict) como parámetro, o None si el usuario no está en el sistema
-            datos=database["users"].find_one( 
-                {"_id": args[1].request_envelope.session.user.user_id},
+            datos=database["usuarios"].find_one( 
+                {"_id": handler_input.request_envelope.session.user.user_id},
                 {"_id": False}
             ),
-            **kwargs
+            **kwargs,
         )
     return wrapper #devolvemos la función decorada
 
@@ -50,7 +51,8 @@ def check_datos(func: Callable, *args, **kwargs) -> Callable:
 
     @functools.wraps(func)
     @get_datos #este decorador hace uso de los datos del usuario, asi que se añade ese decorador
-    def wrapper(*args, **kwargs) -> Response: 
+    def wrapper(*args, **kwargs) -> Response:
+        handler_input = args[1]
         datos = kwargs.get('datos')
 
         if datos is None: #si no está registrado, le decimos que lo haga
@@ -80,7 +82,7 @@ def buscar(input: str, filtro: None, campo: str = "nombre", coleccion: str = "as
         list([elemento[campo] for elemento in database[coleccion].find(filtro, {campo: True})]), #hacemos una lista con todos los valores
         n=1, #solo devolvemos un valor
         cutoff=0, #no buscamos una similaridad mínima, para garantizar que se encuentra un resultado
-    )
+    )[0] #devolvemos el string en vez de la lista
 
 # Definimos los handlers ==========================================================================
 # ===== Base
@@ -182,7 +184,7 @@ class FallbackIntentHandler(BaseHandler):
 
 class SessionEndedRequestHandler(BaseHandler):
     @get_datos
-    def handle(self, handler_input: HandlerInput) -> Response:
+    def handle(self, handler_input: HandlerInput, *args, **kwargs) -> Response:
         # Any cleanup logic goes here.
         return handler_input.response_builder.response
 
