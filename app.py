@@ -43,7 +43,10 @@ def get_datos(func: Callable, *args, **kwargs) -> Callable:
 
 
 def check_datos(func: Callable, *args, **kwargs) -> Callable:
-    """Decorador que comprueba si un usuario se ha dado de alta en el sistema, de estarlo se llama a la función que estamos decorando, y si no lo está, le pedimos que se registre"""
+    """
+    Decorador que comprueba si un usuario se ha dado de alta en el sistema, de estarlo se llama a la función que estamos decorando, y si no lo está,
+    le pedimos que se registre
+    """
 
     @functools.wraps(func)
     @get_datos #este decorador hace uso de los datos del usuario, asi que se añade ese decorador
@@ -61,6 +64,23 @@ def check_datos(func: Callable, *args, **kwargs) -> Callable:
         return func(*args, **kwargs) 
     return wrapper
 
+def buscar(input: str, filtro: None, campo: str = "nombre", coleccion: str = "asignaturas") -> str:
+    """
+    Esta función devuelve la cadena más parecida al input encontrada en el campo especificado dentro de la colección dada, se pueden aplicar filtros
+    a la query
+    """
+
+    #el valor por defecto de una función no puede ser una estructura de datos, porque se ligaría a una dirección de memoria y terminaría dando errores
+    #lo que hacemos es que el valor por defecto sea None, y si tenemos ese valor, lo cambiamos por un diccionario vacío
+    if filtro is None: 
+        filtro = {}
+    
+    return get_close_matches(
+        input,
+        list([elemento[campo] for elemento in database[coleccion].find(filtro, {campo: True})]), #hacemos una lista con todos los valores
+        n=1, #solo devolvemos un valor
+        cutoff=0, #no buscamos una similaridad mínima, para garantizar que se encuentra un resultado
+    )
 
 # Definimos los handlers ==========================================================================
 # ===== Base
@@ -101,9 +121,12 @@ class AsignaturaIntentHandler(CustomHandler):
     @check_datos  #necesitamos que el usuario esté registrado para poder filtrar segun su titulación
     def handle(self, handler_input: HandlerInput, *args, **kwargs) -> Response:
         datos = kwargs.get('datos')
-        asignatura = ask_utils.request_util.get_slot(handler_input, "AsignaturaSlot").value
 
-        speak_output: str =  f"Información de la asignatura {asignatura}, de la titulación {datos['titulacion']}, okey"
+        #recogemos el valor del slot y lo parseamos usando la funcion de búsqueda
+        asignatura = ask_utils.request_util.get_slot(handler_input, "AsignaturaSlot").value
+        asignatura = buscar(asignatura, filtro={'_id.id_estudios': datos['estudios']})
+
+        speak_output: str =  f"Información de la asignatura {asignatura}, okey"
 
         return (
             handler_input.response_builder
