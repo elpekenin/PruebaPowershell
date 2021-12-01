@@ -152,6 +152,31 @@ class AsignaturaIntentHandler(CustomHandler):
                 .response
         )
 
+class ResponsableIntentHandler(CustomHandler):
+    @check_datos  #para poder filtrar segun su titulación
+    def handle(self, handler_input: HandlerInput, *args, **kwargs) -> Response:
+        datos = kwargs.get('datos')
+
+        #recogemos el valor del slot y lo parseamos usando la funcion de búsqueda
+        asignatura = ask_utils.request_util.get_slot(handler_input, "AsignaturaSlot").value
+        asignatura = buscar(asignatura, filtro={'_id.id_estudios': datos['estudios']})
+
+        respuesta = database['asignaturas'].find_one({'nombre': asignatura}, {'_id': False})
+        email = respuesta['responsable']
+        respuesta = database['profesores'].find_one({'_id': email},{'nombre': True})
+        profesor = respuesta['nombre']
+
+        speak_output =  f"El profesor responsable de {asignatura} es {profesor}, te mando su mail"
+        card_title = "Email del profesor"
+        card_text = email
+
+        return (
+            handler_input.response_builder
+                .speak(speak_output)
+                .set_card(SimpleCard(card_title, card_text))
+                .response
+        )
+
 
 class HelpIntentHandler(BaseHandler):
     amazon = True
