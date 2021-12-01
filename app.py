@@ -10,6 +10,7 @@ from flask_ask_sdk.skill_adapter import SkillAdapter
 from ask_sdk_core.dispatch_components import AbstractRequestHandler, AbstractExceptionHandler
 from ask_sdk_core.handler_input import HandlerInput
 from ask_sdk_model import Response
+from ask_sdk_model.ui import SimpleCard
 
 from flask import Flask, render_template, request
 import json
@@ -24,14 +25,16 @@ from difflib  import get_close_matches
 
 # Funciones que nos ayudarán ======================================================================
 def get_datos(func: Callable, *args, **kwargs) -> Callable: 
-    """Este decorador sirve para obtener la info del usuario en nuestra base de datos, a partir del handler_input"""
+    """Este decorador sirve para obtener la info del usuario a partir del handler_input"""
 
     @functools.wraps(func)
     def wrapper(*args, **kwargs) -> Response: #creamos función decorada
-        #args[0] es self porque las funciones que estamos decorando son métodos, args[1] es handler_input de donde sacamos la id del usuario
-        #a la función decorada le pasamos los datos (un dict) como parámetro, o None si el usuario no está en el sistema
+        #args[0] es self porque las funciones que estamos decorando son métodos
+        #args[1] es handler_input de donde sacamos la id del usuario
         handler_input = args[1]
 
+        #a la función decorada le pasamos los datos (un dict) como parámetro
+        #será None si el usuario no está en el sistema
         return func(
             *args,
             datos=database["usuarios"].find_one( 
@@ -45,8 +48,9 @@ def get_datos(func: Callable, *args, **kwargs) -> Callable:
 
 def check_datos(func: Callable, *args, **kwargs) -> Callable:
     """
-    Decorador que comprueba si un usuario se ha dado de alta en el sistema, de estarlo se llama a la función que estamos decorando, y si no lo está,
-    le pedimos que se registre
+    Decorador que comprueba si un usuario se ha dado de alta en el sistema:
+    > de estarlo, se llama a la función que estamos decorando
+    > si no, le pedimos que se registre
     """
 
     @functools.wraps(func)
@@ -54,42 +58,49 @@ def check_datos(func: Callable, *args, **kwargs) -> Callable:
     def wrapper(*args, **kwargs) -> Response:
         handler_input = args[1]
         datos = kwargs.get('datos')
+        speak_output = "Por favor, regístrate para poder usar la skill, \
+        solo tienes que decirme 'Estudio' y la titulación que estás cursando"
 
         if datos is None: #si no está registrado, le decimos que lo haga
             return (
                 handler_input.response_builder
-                    .speak("Por favor, regístrate para poder usar la skill, solo tienes que decirme 'Estudio' y la titulación que estás cursando")
+                    .speak(speak_output)
                     .response
             )
 
-        #si está registrado, se llama a la función decorada pasando los datos del usuario (van en el kwargs gracias al decorador get_datos)
+        #si está registrado, se llama a la función decorada
         return func(*args, **kwargs) 
     return wrapper
 
+
 def buscar(input: str, filtro: None, campo: str = "nombre", coleccion: str = "asignaturas") -> str:
     """
-    Esta función devuelve la cadena más parecida al input encontrada en el campo especificado dentro de la colección dada, se pueden aplicar filtros
-    a la query
+    Esta función devuelve la cadena más parecida al input encontrada en el campo especificado
+    de la colección dada
+    > se pueden aplicar filtros a la query
     """
+    #el valor por defecto de una función no puede ser una estructura de datos
+    # > se ligaría a una dirección de memoria y terminaría dando errores
 
-    #el valor por defecto de una función no puede ser una estructura de datos, porque se ligaría a una dirección de memoria y terminaría dando errores
-    #lo que hacemos es que el valor por defecto sea None, y si tenemos ese valor, lo cambiamos por un diccionario vacío
+    #lo que hacemos es que el valor por defecto sea None
+    # > si tenemos ese valor, lo cambiamos por un diccionario vacío
     if filtro is None: 
         filtro = {}
     
     return get_close_matches(
         input,
-        list([elemento[campo] for elemento in database[coleccion].find(filtro, {campo: True})]), #hacemos una lista con todos los valores
-        n=1, #solo devolvemos un valor
+        #lista con todos los valores
+        list([elemento[campo] for elemento in database[coleccion].find(filtro, {campo: True})]), 
+        n=1, #solo queremos encontrar un valor
         cutoff=0, #no buscamos una similaridad mínima, para garantizar que se encuentra un resultado
     )[0]
 
 # Definimos los handlers ==========================================================================
 # ===== Base
 class BaseHandler(AbstractRequestHandler): 
-    """Objeto base para los handlers de Amazon, evitamos repetir el código de la función can_handle"""
+    """Objeto base para los handlers de Amazon, evitamos repetir can_handle"""
 
-    amazon: bool = False
+    amazon = False
     
     def can_handle(self, handler_input: HandlerInput) -> bool:
         return ask_utils.is_request_type(
@@ -98,7 +109,7 @@ class BaseHandler(AbstractRequestHandler):
 
 
 class CustomHandler(AbstractRequestHandler): 
-    """Objeto base para los handlers de nuestros intents, evitamos repetir el código de la función can_handle"""
+    """Objeto base para los handlers de nuestros intents"""
 
     def can_handle(self, handler_input: HandlerInput) -> bool:
         return ask_utils.is_intent_name(
@@ -107,9 +118,9 @@ class CustomHandler(AbstractRequestHandler):
 
 # ===== Handlers
 class LaunchRequestHandler(BaseHandler):
-    @check_datos
     def handle(self, handler_input: HandlerInput, *args, **kwargs) -> Response:
-        speak_output: str =  "Bienvenido a info uni; tengo información de asignaturas, profesores, horarios y mucho más. Que quieres hacer hoy?"
+        speak_output =  "Bienvenido a info uni; tengo información de \
+            asignaturas, profesores, horarios y mucho más. Que quieres hacer hoy?"
 
         return (
             handler_input.response_builder
@@ -120,7 +131,7 @@ class LaunchRequestHandler(BaseHandler):
 
 
 class AsignaturaIntentHandler(CustomHandler):
-    @check_datos  #necesitamos que el usuario esté registrado para poder filtrar segun su titulación
+    @check_datos  #para poder filtrar segun su titulación
     def handle(self, handler_input: HandlerInput, *args, **kwargs) -> Response:
         datos = kwargs.get('datos')
 
@@ -128,21 +139,26 @@ class AsignaturaIntentHandler(CustomHandler):
         asignatura = ask_utils.request_util.get_slot(handler_input, "AsignaturaSlot").value
         asignatura = buscar(asignatura, filtro={'_id.id_estudios': datos['estudios']})
 
-        speak_output: str =  f"Información de la asignatura {asignatura}, okey"
+        respuesta = database['asignaturas'].find_one({'nombre': asignatura}, {'_id': False})
+
+        speak_output =  f"Okey, aqui tienes el enlace a la guía docente de {asignatura}"
+        card_title = "Enlace a la guía docente"
+        card_text = respuesta['guia_docente']
 
         return (
             handler_input.response_builder
                 .speak(speak_output)
-                # .ask(speak_output) 
+                .set_card(SimpleCard(card_title, card_text))
                 .response
         )
 
 
 class HelpIntentHandler(BaseHandler):
-    amazon: bool = True
+    amazon = True
 
     def handle(self, handler_input: HandlerInput, *args, **kwargs) -> Response:
-        speak_output: str =  "Las opciones disponibles son: Asignatura, Horario, Profesor. Qué quieres consultar?"
+        speak_output =  "Las opciones disponibles son: Asignatura, Profesores \
+        Horarios. Qué quieres consultar?"
 
         return (
             handler_input.response_builder
@@ -160,7 +176,7 @@ class CancelOrStopIntentHandler(AbstractRequestHandler):
         )
 
     def handle(self, handler_input: HandlerInput, *args, **kwargs) -> Response:
-        speak_output: str =  "Hasta luego"
+        speak_output =  "Hasta luego"
 
         return (
             handler_input.response_builder
@@ -170,10 +186,10 @@ class CancelOrStopIntentHandler(AbstractRequestHandler):
 
 
 class FallbackIntentHandler(BaseHandler):
-    amazon: bool = True
+    amazon = True
 
     def handle(self, handler_input: HandlerInput, *args, **kwargs) -> Response:
-        speech = "No estoy seguro. Puedes decir Ayuda para ver las opciones disponibles. Qué quieres hacer?"
+        speech = "Puedes decir 'Ayuda' para ver las opciones disponibles."
         reprompt = "No te entendí. Con qué puedo ayudarte?"
 
         return handler_input.response_builder.speak(speech).ask(reprompt).response
@@ -182,7 +198,7 @@ class FallbackIntentHandler(BaseHandler):
 class SessionEndedRequestHandler(BaseHandler):
     def handle(self, handler_input: HandlerInput, *args, **kwargs) -> Response:
         # Any cleanup logic goes here.
-        return handler_input.response_builder.response
+        return handler_input.response_builder.speak("Cerrando").response
 
 
 class IntentReflectorHandler(AbstractRequestHandler):
@@ -191,12 +207,11 @@ class IntentReflectorHandler(AbstractRequestHandler):
 
     def handle(self, handler_input: HandlerInput, *args, **kwargs) -> Response:
         intent_name = ask_utils.get_intent_name(handler_input)
-        speak_output: str =  f"Se ha activado el intent {intent_name}."
+        speak_output =  f"Se ha activado el intent {intent_name}."
 
         return (
             handler_input.response_builder
                 .speak(speak_output)
-                # .ask("add a reprompt if you want to keep the session open for the user to respond")
                 .response
         )
 
@@ -208,7 +223,7 @@ class CatchAllExceptionHandler(AbstractExceptionHandler):
     def handle(self, handler_input: HandlerInput, exception, *args, **kwargs) -> Response:
         logger.error(exception, exc_info=True)
 
-        speak_output: str =  "No pude hacer lo que has pedido, prueba de nuevo."
+        speak_output =  "No pude hacer lo que has pedido, prueba de nuevo."
 
         return (
             handler_input.response_builder
