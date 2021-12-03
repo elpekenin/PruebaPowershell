@@ -22,6 +22,7 @@ from typing import Union
 from collections.abc import Callable
 import functools
 from difflib  import get_close_matches
+from requests import get
 
 # Funciones que nos ayudarán ======================================================================
 def get_datos(func: Callable, *args, **kwargs) -> Callable: 
@@ -31,14 +32,18 @@ def get_datos(func: Callable, *args, **kwargs) -> Callable:
     def wrapper(*args, **kwargs) -> Response: #creamos función decorada
         #args[0] es self porque las funciones que estamos decorando son métodos
         #args[1] es handler_input de donde sacamos la id del usuario
-        handler_input = args[1]
+        # > obtenemos el token del JSON entrante
+        token = args[1].request_envelope.session.user.access_token
+
+        #usamos el token para obtener el id del usuario con LWA
+        user_id =  get(f"https://api.amazon.com/user/profile?access_token={token}").json()['user_id'] 
 
         #a la función decorada le pasamos los datos (un dict) como parámetro
         #será None si el usuario no está en el sistema
         return func(
             *args,
             datos=database["usuarios"].find_one( 
-                {"_id": handler_input.request_envelope.session.user.user_id},
+                {"_id": user_id},
                 {"_id": False}
             ),
             **kwargs,
@@ -142,7 +147,7 @@ class AsignaturaIntentHandler(CustomHandler):
         respuesta = database['asignaturas'].find_one({'nombre': asignatura}, {'_id': False})
 
         speak_output =  f"Okey, aqui tienes el enlace a la guía docente de {asignatura}"
-        card_title = "Enlace a la guía docente"
+        card_title = f"Enlace a la guía docente ({asignatura})"
         card_text = respuesta['guia_docente']
 
         return (
@@ -167,7 +172,7 @@ class ResponsableIntentHandler(CustomHandler):
         profesor = respuesta['nombre']
 
         speak_output =  f"El profesor responsable de {asignatura} es {profesor}, te mando su mail"
-        card_title = "Email del profesor"
+        card_title = f"Email del profesor ({asignatura})"
         card_text = email
 
         return (
@@ -177,6 +182,7 @@ class ResponsableIntentHandler(CustomHandler):
                 .response
         )
 
+#TODO Fecha examenes, dias festivos, contacto secretaria, horario
 
 class HelpIntentHandler(BaseHandler):
     amazon = True
