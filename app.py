@@ -25,8 +25,16 @@ from difflib  import get_close_matches
 from requests import get
 
 # Funciones que nos ayudarán ======================================================================
-def get_datos(func: Callable, *args, **kwargs) -> Callable: 
-    """Este decorador sirve para obtener la info del usuario a partir del handler_input"""
+def get_datos(func: Callable, cache={}, *args, **kwargs) -> Callable: 
+    """
+    Este decorador sirve para obtener la info del usuario a partir del handler_input
+    En la caché guardaremos token:user_id para evitar hacer peticiones extra a LWA
+
+    Al tener como valor por defecto un diccionario vacio
+    > La función se queda "ligada" a la posicion de memoria donde está ese dict
+    > Conforme lo vayamos editando se guarda la información aunque el valor por 
+    defecto sea vacío
+    """
 
     @functools.wraps(func)
     def wrapper(*args, **kwargs) -> Response: #creamos función decorada
@@ -35,8 +43,20 @@ def get_datos(func: Callable, *args, **kwargs) -> Callable:
         # > obtenemos el token del JSON entrante
         token = args[1].request_envelope.session.user.access_token
 
-        #usamos el token para obtener el id del usuario con LWA
-        user_id =  get(f"https://api.amazon.com/user/profile?access_token={token}").json()['user_id'] 
+        if token not in cache:
+            #usamos el token para obtener el id del usuario con LWA
+            user_id =  get(f"https://api.amazon.com/user/profile?access_token={token}").json()['user_id'] 
+
+            #si teniamos el usuario en la caché con otro token, borramos esa entrada
+            for k, v in cache.items():
+                if v == user_id:
+                    cache.pop(k)
+
+            #guardamos sus datos
+            cache[token] = user_id
+        
+        else:
+            user_id = cache[token]
 
         #a la función decorada le pasamos los datos (un dict) como parámetro
         #será None si el usuario no está en el sistema
