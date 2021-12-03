@@ -4,8 +4,15 @@ from pymongo import MongoClient
 database = MongoClient(info.database_ip)[info.database_name]
 from requests import get 
 
-token = "Atza|IwEBIKWpIlpmXLJSVSK8bkmA60QzModnjg6y_otWz2QcoLitfZGy3pHnLolUOYsqPNpRMds20iF1otVssXJCR8VZnUpDQ0S8yV4H2kDN8DV-tstf2Np30-77KWpRDaItIwqW5qwgwPzMsYXe-NeBResNIAraiRJyqSwNcfJy5CX2zUgLnnrFdTzWhJhzZ5NUzJudpF9cu2SvdlkA1-jutaDgiXL7ii-4hn1MMpEG35H2G0FTqgy0OX7EacOpG_XVjnjkylKxZfF_kDgyCb8l5N0c0NOfxyxgBGyVv7esZ3l_OGRxGogTDiPWu_FEu-v4n2f69zZwEBykTk74ZOewnWyENAxISKTjB5stDG1E_QmL-VQUPf0jCnFgnMKVHYJNZaYbrOvJsriwMXOEqvb6Fv3kSrrkHHoH9KbXvMocYJdWZZ-5MA"
+datos = {
+    "peke": "hola",
+    "afoasd": 3
+}
 
-response =
+for k,v in datos.items():
+    print(k, v)
+    if(v == "hola"):
+        datos.pop(k)
+        break
 
-print(response)
+print(datos)

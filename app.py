@@ -25,7 +25,7 @@ from difflib  import get_close_matches
 from requests import get
 
 # Funciones que nos ayudarán ======================================================================
-def get_datos(func: Callable, cache={}, *args, **kwargs) -> Callable: 
+def get_data(func: Callable, cache={}, *args, **kwargs) -> Callable: 
     """
     Este decorador sirve para obtener la info del usuario a partir del handler_input
     En la caché guardaremos token:user_id para evitar hacer peticiones extra a LWA
@@ -51,18 +51,18 @@ def get_datos(func: Callable, cache={}, *args, **kwargs) -> Callable:
             for k, v in cache.items():
                 if v == user_id:
                     cache.pop(k)
+                    break
 
             #guardamos sus datos
             cache[token] = user_id
         
-        else:
-            user_id = cache[token]
+        user_id = cache[token]
 
         #a la función decorada le pasamos los datos (un dict) como parámetro
         #será None si el usuario no está en el sistema
         return func(
             *args,
-            datos=database["usuarios"].find_one( 
+            data=database["usuarios"].find_one( 
                 {"_id": user_id},
                 {"_id": False}
             ),
@@ -71,7 +71,7 @@ def get_datos(func: Callable, cache={}, *args, **kwargs) -> Callable:
     return wrapper #devolvemos la función decorada
 
 
-def check_datos(func: Callable, *args, **kwargs) -> Callable:
+def check_data(func: Callable, *args, **kwargs) -> Callable:
     """
     Decorador que comprueba si un usuario se ha dado de alta en el sistema:
     > de estarlo, se llama a la función que estamos decorando
@@ -79,17 +79,19 @@ def check_datos(func: Callable, *args, **kwargs) -> Callable:
     """
 
     @functools.wraps(func)
-    @get_datos #este decorador hace uso de los datos del usuario, asi que se añade ese decorador
+    @get_data #este decorador hace uso de los datos del usuario, asi que se añade ese decorador
     def wrapper(*args, **kwargs) -> Response:
         handler_input = args[1]
-        datos = kwargs.get('datos')
-        speak_output = "Por favor, regístrate para poder usar la skill, \
+        data = kwargs.get('data')
+        text = "Por favor, regístrate para poder usar la skill, \
         solo tienes que decirme 'Estudio' y la titulación que estás cursando"
 
-        if datos is None: #si no está registrado, le decimos que lo haga
+        if data is None: #si no está registrado, le decimos que lo haga
             return (
                 handler_input.response_builder
-                    .speak(speak_output)
+                    .speak(text)
+                    .ask(text)
+                    .set_card(SimpleCard("Regístrate", text))
                     .response
             )
 
@@ -98,7 +100,7 @@ def check_datos(func: Callable, *args, **kwargs) -> Callable:
     return wrapper
 
 
-def buscar(input: str, filtro: None, campo: str = "nombre", coleccion: str = "asignaturas") -> str:
+def find(input: str, filtering: None, field: str = "nombre", colection: str = "asignaturas") -> str:
     """
     Esta función devuelve la cadena más parecida al input encontrada en el campo especificado
     de la colección dada
@@ -109,13 +111,13 @@ def buscar(input: str, filtro: None, campo: str = "nombre", coleccion: str = "as
 
     #lo que hacemos es que el valor por defecto sea None
     # > si tenemos ese valor, lo cambiamos por un diccionario vacío
-    if filtro is None: 
-        filtro = {}
+    if filtering is None: 
+        filtering = {}
     
     return get_close_matches(
         input,
         #lista con todos los valores
-        list([elemento[campo] for elemento in database[coleccion].find(filtro, {campo: True})]), 
+        list([element[field] for element in database[colection].find(filtering, {field: True})]), 
         n=1, #solo queremos encontrar un valor
         cutoff=0, #no buscamos una similaridad mínima, para garantizar que se encuentra un resultado
     )[0]
@@ -141,80 +143,87 @@ class CustomHandler(AbstractRequestHandler):
             self.__class__.__name__.split("Handler")[0]
         )(handler_input)
 
-# ===== Handlers
+# ===== Mis handlers
 class LaunchRequestHandler(BaseHandler):
     def handle(self, handler_input: HandlerInput, *args, **kwargs) -> Response:
-        speak_output =  "Bienvenido a info uni; tengo información de \
-            asignaturas, profesores, horarios y mucho más. Que quieres hacer hoy?"
+        text =  "Tengo información de: " + \
+        "guías docentes, " + \
+        "profesores responsables, " + \
+        "horarios de clase, " + \
+        "días festivos, " + \
+        "y fechas de exámenes." + \
+        "¿Qué quieres consultar?"
 
         return (
             handler_input.response_builder
-                .speak(speak_output)
-                .ask(speak_output)
+                .speak(text)
+                .ask(text)
+                .set_card(SimpleCard("Bienvenid@ al asistente virtual de la UPCT", text))
                 .response
         )
 
 
-class AsignaturaIntentHandler(CustomHandler):
-    @check_datos  #para poder filtrar segun su titulación
+class SubjectIntentHandler(CustomHandler):
+    @check_data  #para poder filtrar segun su titulación
     def handle(self, handler_input: HandlerInput, *args, **kwargs) -> Response:
-        datos = kwargs.get('datos')
+        data = kwargs.get('data')
 
-        #recogemos el valor del slot y lo parseamos usando la funcion de búsqueda
-        asignatura = ask_utils.request_util.get_slot(handler_input, "AsignaturaSlot").value
-        asignatura = buscar(asignatura, filtro={'_id.id_estudios': datos['estudios']})
+        #cogemos el valor del slot y lo parseamos usando la funcion de búsqueda
+        subject = ask_utils.request_util.get_slot(handler_input, "SubjectSlot").value
+        subject = find(subject, filtering={'_id.id_estudios': data['estudios']})
 
-        respuesta = database['asignaturas'].find_one({'nombre': asignatura}, {'_id': False})
+        response = database['asignaturas'].find_one({'nombre': subject}, {'_id': False})
 
-        speak_output =  f"Okey, aqui tienes el enlace a la guía docente de {asignatura}"
-        card_title = f"Enlace a la guía docente ({asignatura})"
-        card_text = respuesta['guia_docente']
+        text =  f"Aquí tienes el enlace a la guía docente de {subject}\n\n" + \
+        f"{response['guia_docente']}"
 
         return (
             handler_input.response_builder
-                .speak(speak_output)
-                .set_card(SimpleCard(card_title, card_text))
+                .speak(text)
+                .set_card(SimpleCard("Guía docente", card_text))
                 .response
         )
 
-class ResponsableIntentHandler(CustomHandler):
-    @check_datos  #para poder filtrar segun su titulación
+class TeacherIntentHandler(CustomHandler):
+    @check_data  #para poder filtrar segun su titulación
     def handle(self, handler_input: HandlerInput, *args, **kwargs) -> Response:
-        datos = kwargs.get('datos')
+        data = kwargs.get('data')
 
         #recogemos el valor del slot y lo parseamos usando la funcion de búsqueda
-        asignatura = ask_utils.request_util.get_slot(handler_input, "AsignaturaSlot").value
-        asignatura = buscar(asignatura, filtro={'_id.id_estudios': datos['estudios']})
+        subject = ask_utils.request_util.get_slot(handler_input, "SubjectSlot").value
+        subject = find(subject, filtering={'_id.id_estudios': data['estudios']})
 
-        respuesta = database['asignaturas'].find_one({'nombre': asignatura}, {'_id': False})
-        email = respuesta['responsable']
-        respuesta = database['profesores'].find_one({'_id': email},{'nombre': True})
-        profesor = respuesta['nombre']
+        response = database['asignaturas'].find_one({'nombre': subject}, {'_id': False})
+        email = response['responsable']
 
-        speak_output =  f"El profesor responsable de {asignatura} es {profesor}, te mando su mail"
-        card_title = f"Email del profesor ({asignatura})"
-        card_text = email
+        response = database['profesores'].find_one({'_id': email},{'nombre': True})
+        teacher = response['nombre']
+
+        text =  f"El profesor responsable de {subjexct} es {teacher}, te mando su mail" + \
+        f"\n\n{email}"
 
         return (
             handler_input.response_builder
-                .speak(speak_output)
-                .set_card(SimpleCard(card_title, card_text))
+                .speak(text)
+                .set_card(SimpleCard("Profesor responsable", text))
                 .response
         )
 
 #TODO Fecha examenes, dias festivos, contacto secretaria, horario
 
+# ===== Default
 class HelpIntentHandler(BaseHandler):
     amazon = True
 
     def handle(self, handler_input: HandlerInput, *args, **kwargs) -> Response:
-        speak_output =  "Las opciones disponibles son: Asignatura, Profesores \
-        Horarios. Qué quieres consultar?"
+        text =  "Las opciones disponibles son: asignatura, profesor \
+        horario, fechas, contacto. ¿Qué quieres consultar?"
 
         return (
             handler_input.response_builder
-                .speak(speak_output)
-                .ask(speak_output)
+                .speak(text)
+                .ask(text)
+                .set_card(SimpleCard("Ayuda", text))
                 .response
         )
 
@@ -227,11 +236,12 @@ class CancelOrStopIntentHandler(AbstractRequestHandler):
         )
 
     def handle(self, handler_input: HandlerInput, *args, **kwargs) -> Response:
-        speak_output =  "Hasta luego"
+        text =  "Hasta luego"
 
         return (
             handler_input.response_builder
-                .speak(speak_output)
+                .speak(text)
+                .set_card(SimpleCard("Cerrando...", text))
                 .response
         )
 
@@ -243,13 +253,22 @@ class FallbackIntentHandler(BaseHandler):
         speech = "Puedes decir 'Ayuda' para ver las opciones disponibles."
         reprompt = "No te entendí. Con qué puedo ayudarte?"
 
-        return handler_input.response_builder.speak(speech).ask(reprompt).response
+        return (
+            handler_input.response_builder
+                .speak(speech)
+                .ask(reprompt)
+                .response
+        )
 
 
 class SessionEndedRequestHandler(BaseHandler):
     def handle(self, handler_input: HandlerInput, *args, **kwargs) -> Response:
         # Any cleanup logic goes here.
-        return handler_input.response_builder.speak("Cerrando").response
+        return (
+            handler_input.response_builder
+                .speak("Cerrando")
+                .response
+        )
 
 
 class IntentReflectorHandler(AbstractRequestHandler):
@@ -258,11 +277,12 @@ class IntentReflectorHandler(AbstractRequestHandler):
 
     def handle(self, handler_input: HandlerInput, *args, **kwargs) -> Response:
         intent_name = ask_utils.get_intent_name(handler_input)
-        speak_output =  f"Se ha activado el intent {intent_name}."
+        text =  f"Se ha activado el intent {intent_name}."
 
         return (
             handler_input.response_builder
-                .speak(speak_output)
+                .speak(text)
+                .set_card(SimpleCard("Error", text))
                 .response
         )
 
@@ -274,25 +294,28 @@ class CatchAllExceptionHandler(AbstractExceptionHandler):
     def handle(self, handler_input: HandlerInput, exception, *args, **kwargs) -> Response:
         logger.error(exception, exc_info=True)
 
-        speak_output =  "No pude hacer lo que has pedido, prueba de nuevo."
+        text =  "No pude hacer lo que has pedido, prueba de nuevo."
 
         return (
             handler_input.response_builder
-                .speak(speak_output)
-                .ask(speak_output)
+                .speak(text)
+                .set_card(SimpleCard("Error", text))
                 .response
         )
 
 
 # Creamos el SkillAdapter a partir de todos los handlers ==========================================
 skill_builder = SkillBuilder()
+
 skill_builder.add_request_handler(LaunchRequestHandler())
-skill_builder.add_request_handler(AsignaturaIntentHandler())
+skill_builder.add_request_handler(SubjectIntentHandler())
 skill_builder.add_request_handler(ResponsableIntentHandler())
+
 skill_builder.add_request_handler(HelpIntentHandler())
 skill_builder.add_request_handler(CancelOrStopIntentHandler())
 skill_builder.add_request_handler(FallbackIntentHandler())
 skill_builder.add_request_handler(SessionEndedRequestHandler()) 
+
 skill_builder.add_request_handler(IntentReflectorHandler()) #último para que no sobre-escriba
 skill_builder.add_exception_handler(CatchAllExceptionHandler())
 
