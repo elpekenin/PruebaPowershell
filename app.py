@@ -10,7 +10,8 @@ from flask_ask_sdk.skill_adapter import SkillAdapter
 from ask_sdk_core.dispatch_components import AbstractRequestHandler, AbstractExceptionHandler
 from ask_sdk_core.handler_input import HandlerInput
 from ask_sdk_model import Response
-from ask_sdk_model.ui import SimpleCard
+from ask_sdk_model.ui import SimpleCard, StandardCard
+from ask_sdk_model.ui.image import Image
 
 from flask import Flask, render_template, request
 import json
@@ -23,6 +24,7 @@ from collections.abc import Callable
 import functools
 from difflib  import get_close_matches
 from requests import get
+
 
 # Funciones que nos ayudarán ======================================================================
 def get_data(func: Callable, cache={}, *args, **kwargs) -> Callable: 
@@ -45,7 +47,7 @@ def get_data(func: Callable, cache={}, *args, **kwargs) -> Callable:
 
         if token not in cache:
             #usamos el token para obtener el id del usuario con LWA
-            user_id =  get(f"https://api.amazon.com/user/profile?access_token={token}").json()['user_id'] 
+            user_id =  get(f"https://api.amazon.com/user/profile?access_token={token}").json()["user_id"] 
 
             #si teniamos el usuario en la caché con otro token, borramos esa entrada
             for k, v in cache.items():
@@ -82,7 +84,7 @@ def check_data(func: Callable, *args, **kwargs) -> Callable:
     @get_data #este decorador hace uso de los datos del usuario, asi que se añade ese decorador
     def wrapper(*args, **kwargs) -> Response:
         handler_input = args[1]
-        data = kwargs.get('data')
+        data = kwargs.get("data")
         text = "Por favor, regístrate para poder usar la skill, \
         solo tienes que decirme 'Estudio' y la titulación que estás cursando"
 
@@ -122,6 +124,8 @@ def find(input: str, filtering: None, field: str = "nombre", colection: str = "a
         cutoff=0, #no buscamos una similaridad mínima, para garantizar que se encuentra un resultado
     )[0]
 
+
+
 # Definimos los handlers ==========================================================================
 # ===== Base
 class BaseHandler(AbstractRequestHandler): 
@@ -150,8 +154,9 @@ class LaunchRequestHandler(BaseHandler):
         "guías docentes, " + \
         "profesores responsables, " + \
         "horarios de clase, " + \
-        "días festivos, " + \
-        "y fechas de exámenes." + \
+        "fechas de exámenes, " + \
+        "contacto secretaría, " + \
+        "y días festivos" + \
         "¿Qué quieres consultar?"
 
         return (
@@ -166,38 +171,43 @@ class LaunchRequestHandler(BaseHandler):
 class SubjectIntentHandler(CustomHandler):
     @check_data  #para poder filtrar segun su titulación
     def handle(self, handler_input: HandlerInput, *args, **kwargs) -> Response:
-        data = kwargs.get('data')
+        data = kwargs.get("data")
 
-        #cogemos el valor del slot y lo parseamos usando la funcion de búsqueda
+        #parseamos la asignatura en el slot con la función de búsqueda
         subject = ask_utils.request_util.get_slot(handler_input, "SubjectSlot").value
-        subject = find(subject, filtering={'_id.id_estudios': data['estudios']})
+        subject = find(subject, filtering={"_id.id_estudios": data["estudios"]})
 
-        response = database['asignaturas'].find_one({'nombre': subject}, {'_id': False})
+        #obtenemos enlace de la guia docente
+        response = database["asignaturas"].find_one({"nombre": subject}, {"_id": False})
+        url = response['guia_docente']
 
-        text =  f"Aquí tienes el enlace a la guía docente de {subject}\n\n" + \
-        f"{response['guia_docente']}"
+        logger.info(url)
+
+        text =  f"Aquí tienes la guía docente de {subject}"
 
         return (
             handler_input.response_builder
                 .speak(text)
-                .set_card(SimpleCard("Guía docente", card_text))
+                .set_card(SimpleCard("Guía docente", text)) #TODO standardcard
                 .response
         )
 
 class TeacherIntentHandler(CustomHandler):
-    @check_data  #para poder filtrar segun su titulación
+    @check_data
     def handle(self, handler_input: HandlerInput, *args, **kwargs) -> Response:
-        data = kwargs.get('data')
+        data = kwargs.get("data")
 
-        #recogemos el valor del slot y lo parseamos usando la funcion de búsqueda
+        #parseamos la asignatura en el slot con la función de búsqueda
         subject = ask_utils.request_util.get_slot(handler_input, "SubjectSlot").value
-        subject = find(subject, filtering={'_id.id_estudios': data['estudios']})
+        subject = find(subject, filtering={"_id.id_estudios": data["estudios"]})
 
-        response = database['asignaturas'].find_one({'nombre': subject}, {'_id': False})
-        email = response['responsable']
+        #obtenemos el email del profesor
+        response = database["asignaturas"].find_one({"nombre": subject}, {"_id": False})
+        email = response["responsable"]
 
-        response = database['profesores'].find_one({'_id': email},{'nombre': True})
-        teacher = response['nombre']
+        #y su nombre
+        response = database["profesores"].find_one({"_id": email},{"nombre": True})
+        teacher = response["nombre"]
 
         text =  f"El profesor responsable de {subjexct} es {teacher}, te mando su mail" + \
         f"\n\n{email}"
@@ -209,7 +219,69 @@ class TeacherIntentHandler(CustomHandler):
                 .response
         )
 
-#TODO Fecha examenes, dias festivos, contacto secretaria, horario
+class ScheduleIntentHandler(CustomHandler):
+    @check_data
+    def handle(self, handler_input: HandlerInput, *args, **kwargs) -> Response:
+        data = kwargs.get("data")
+
+        #recogemos el valor del slot para filtrar por curso
+        year = ask_utils.request_util.get_slot(handler_input, "YearSlot").value
+        logger.info(year)
+
+        #TODO imagenes horario en DB, revisar StandardCard
+        response = database["horarios"].find_one({"_id": data["estudios"]},{"imagen": True})
+        image = response["imagen"]
+
+        text =  "Aquí tienes el horario"
+
+        return (
+            handler_input.response_builder
+                .speak(text)
+                .set_card(StandardCard("Profesor responsable", text, image))
+                .response
+        )
+
+class DatesIntentHandler(CustomHandler):
+    @check_data 
+    def handle(self, handler_input: HandlerInput, *args, **kwargs) -> Response:
+        data = kwargs.get("data")
+
+        #valor del slot
+        date = ask_utils.request_util.get_slot(handler_input, "DateSlot").value
+
+        #TODO fechas en la base de datos
+        response = database["fechas"].find_one({"_id": data["estudios"]},{"fechas": True})
+        date_range = response[date]
+
+        text = f"Los dias festivos son {date_range}" #TODO lista larga, a ver que formato doy  
+        if date != "festivo":
+            text =  f"Los {date} son del {date_range[0]} al {date_range[1]}"
+
+
+        return (
+            handler_input.response_builder
+                .speak(text)
+                .set_card(SimpleCard(date, text))
+                .response
+        )
+
+class ContactIntentHandler(CustomHandler):
+    @check_data
+    def handle(self, handler_input: HandlerInput, *args, **kwargs) -> Response:
+        data = kwargs.get("data")
+        studying = data["estudios"]
+
+        response = database["contacto"].find_one({"_id": studying},{"contacto": True})
+        contact = response["contacto"]
+
+        text =  f"Las formas de contactar con la secretaría de {studying} son {contact}"
+
+        return (
+            handler_input.response_builder
+                .speak(text)
+                .set_card(SimpleCard(date, text))
+                .response
+        )
 
 # ===== Default
 class HelpIntentHandler(BaseHandler):
@@ -217,7 +289,7 @@ class HelpIntentHandler(BaseHandler):
 
     def handle(self, handler_input: HandlerInput, *args, **kwargs) -> Response:
         text =  "Las opciones disponibles son: asignatura, profesor \
-        horario, fechas, contacto. ¿Qué quieres consultar?"
+        horario, fechas, contacto, festivos. ¿Qué quieres consultar?"
 
         return (
             handler_input.response_builder
@@ -309,7 +381,10 @@ skill_builder = SkillBuilder()
 
 skill_builder.add_request_handler(LaunchRequestHandler())
 skill_builder.add_request_handler(SubjectIntentHandler())
-skill_builder.add_request_handler(ResponsableIntentHandler())
+skill_builder.add_request_handler(TeacherIntentHandler())
+skill_builder.add_request_handler(ScheduleIntentHandler())
+skill_builder.add_request_handler(DatesIntentHandler())
+skill_builder.add_request_handler(ContactIntentHandler())
 
 skill_builder.add_request_handler(HelpIntentHandler())
 skill_builder.add_request_handler(CancelOrStopIntentHandler())
