@@ -99,7 +99,7 @@ def check_data(func: Callable, *args, **kwargs) -> Callable:
     return wrapper
 
 
-def find(input: str, filtering: None, field: str = "nombre", colection: str = "asignaturas") -> str:
+def find(input: str, filtering: None, field: str = "nombre", collection: str = "asignaturas") -> str:
     """
     Esta función devuelve la cadena más parecida al input encontrada en el campo especificado
     de la colección dada
@@ -116,7 +116,7 @@ def find(input: str, filtering: None, field: str = "nombre", colection: str = "a
     return get_close_matches(
         input,
         #lista con todos los valores
-        list([element[field] for element in database[colection].find(filtering, {field: True})]), 
+        list([element[field] for element in database[collection].find(filtering, {field: True})]), 
         n=1, #solo queremos encontrar un valor
         cutoff=0, #no buscamos una similaridad mínima, para garantizar que se encuentra un resultado
     )[0]
@@ -144,7 +144,7 @@ class CustomHandler(AbstractRequestHandler):
             self.__class__.__name__.split("Handler")[0]
         )(handler_input)
 
-# ===== Mis handlers
+# ===== Lógica de los handlers
 class LaunchRequestHandler(BaseHandler):
     def handle(self, handler_input: HandlerInput, *args, **kwargs) -> Response:
         text =  "Tengo información de: " + \
@@ -165,12 +165,22 @@ class LaunchRequestHandler(BaseHandler):
         )
 
 
+class LoginIntentHandler(CustomHandler):
+    def handle(self, handler_input: HandlerInput, *args, **kwargs) -> Response:
+        #leemos y parseamos el valor del slot
+        slot_value = ask_utils.request_util.get_slot(handler_input, "StudyingSlot").value
+        studying = find(slot_value, field="nombre", collection="estudios")
+
+        #TODO preguntar si estudia {studying}
+        # > guardar el valor en caso afirmativo
+        # > preguntar escuela y responderle estudios disponbiles
+
+
 class SubjectIntentHandler(CustomHandler):
     @check_data  #para poder filtrar segun su titulación
     def handle(self, handler_input: HandlerInput, *args, **kwargs) -> Response:
         studying = kwargs.get["data"]["estudios"]
 
-        #parseamos la asignatura en el slot con la función de búsqueda
         slot_value = ask_utils.request_util.get_slot(handler_input, "SubjectSlot").value
         subject = find(slot_value, filtering={"_id.id_estudios": studying})
 
@@ -178,7 +188,6 @@ class SubjectIntentHandler(CustomHandler):
         url = database["asignaturas"].find_one({"nombre": subject}, {"_id": False})["guia_docente"]
 
         text =  f"Aquí tienes la guía docente de {subject}"
-
         return (
             handler_input.response_builder
                 .speak(text)
@@ -199,7 +208,6 @@ class TeacherIntentHandler(CustomHandler):
         teacher = database["profesores"].find_one({"_id": email}, {"nombre": True})["nombre"]
 
         text =  f"El profesor responsable de {subject} es {teacher}, te mando su mail\n{email}"
-
         return (
             handler_input.response_builder
                 .speak(text)
@@ -220,7 +228,6 @@ class ScheduleIntentHandler(CustomHandler):
         image = database["horarios"].find_one({"_id": studying]},{"imagen": True})["imagen"]
 
         text =  "Aquí tienes el horario"
-
         return (
             handler_input.response_builder
                 .speak(text)
@@ -242,7 +249,6 @@ class DatesIntentHandler(CustomHandler):
         dates = database["fechas"].find_one({"_id": data["estudios"]},{date: True})[date]
 
         text =  f"Los {date} son del {dates[0]} al {dates[1]}"
-
         return (
             handler_input.response_builder
                 .speak(text)
@@ -254,14 +260,13 @@ class DatesIntentHandler(CustomHandler):
 class ContactIntentHandler(CustomHandler):
     @check_data
     def handle(self, handler_input: HandlerInput, *args, **kwargs) -> Response:
-        data = kwargs.get("data")["estudios"]
+        studying = kwargs.get("data")["estudios"]
         school = database["estudios"].find_one({"_id": studying}, {"escuela": True})["escuela"]
 
         #creamos un generador con las formas de contactar
         contact = (f"{key}: {value}" for key, value in dict(database["contacto"].find_one({"_id": school},{"_id": False})).items())
 
         text =  f"Las formas de contactar con la secretaría de {studying} son {', '.join(contact)}"
-
         return (
             handler_input.response_builder
                 .speak(text)
@@ -270,14 +275,12 @@ class ContactIntentHandler(CustomHandler):
         )
 
 
-# ===== Default
 class HelpIntentHandler(BaseHandler):
     amazon = True
 
     def handle(self, handler_input: HandlerInput, *args, **kwargs) -> Response:
         text =  "Las opciones disponibles son: asignatura, profesor \
         horario, fechas, contacto, festivos. ¿Qué quieres consultar?"
-
         return (
             handler_input.response_builder
                 .speak(text)
@@ -296,7 +299,6 @@ class CancelOrStopIntentHandler(AbstractRequestHandler):
 
     def handle(self, handler_input: HandlerInput, *args, **kwargs) -> Response:
         text =  "Hasta luego"
-
         return (
             handler_input.response_builder
                 .speak(text)
@@ -311,7 +313,6 @@ class FallbackIntentHandler(BaseHandler):
     def handle(self, handler_input: HandlerInput, *args, **kwargs) -> Response:
         speech = "Puedes decir 'Ayuda' para ver las opciones disponibles."
         reprompt = "No te entendí. Con qué puedo ayudarte?"
-
         return (
             handler_input.response_builder
                 .speak(speech)
@@ -337,8 +338,6 @@ class IntentReflectorHandler(AbstractRequestHandler):
     def handle(self, handler_input: HandlerInput, *args, **kwargs) -> Response:
         intent_name = ask_utils.get_intent_name(handler_input)
         text =  f"Se ha activado el intent {intent_name}."
-        logger.info(str(handler_input))
-
         return (
             handler_input.response_builder
                 .speak(text)
