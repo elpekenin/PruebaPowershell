@@ -6,6 +6,7 @@
 #     Copyright (c) 2021 Pablo Martínez Bernal
 # ==========================================================
 
+
 # ==========================================================
 #      IMPORTS
 # ==========================================================
@@ -55,7 +56,7 @@ logging.basicConfig(
     level=logging.DEBUG,
     filename="app.log",
     format="%(asctime)s -- %(message)s",
-    datefmt="%d-%b-%y %H:%M:%S"
+    datefmt="%d/%b/%y %H:%M:%S"
 )
 
 app = Flask(__name__)
