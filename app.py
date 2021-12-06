@@ -1,9 +1,23 @@
+#     --------------------Desarrollador--------------------
+#     Pablo Martínez Bernal <martinezbernalpablo@gmail.com>
+#     
+#     ----------------------Licencia.----------------------
+#     Licencia MIT [https://opensource.org/licenses/MIT]
+#     Copyright (c) 2021 Pablo Martínez Bernal
+# ==========================================================
+
+# ==========================================================
+#      IMPORTS
+# ==========================================================
+
+## Constantes
 from datos import info
 
+## Debug
 import logging
-logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO, filename="app.log", filemode="w")
+import datetime
 
+## Alexa Skill Kit SDK
 import ask_sdk_core.utils as ask_utils
 from ask_sdk_core.skill_builder import SkillBuilder
 from flask_ask_sdk.skill_adapter import SkillAdapter
@@ -13,20 +27,46 @@ from ask_sdk_model import Response
 from ask_sdk_model.ui import SimpleCard, StandardCard
 from ask_sdk_model.ui.image import Image
 
+## Flask
 from flask import Flask, render_template, request
 import json
-app = Flask(__name__)
-from pymongo import MongoClient
-database = MongoClient(info.database_ip)[info.database_name]
 
+## MongoDB
+from pymongo import MongoClient
+
+## Type hinting
 from typing import Union
 from collections.abc import Callable
+
+## Decoradores
 import functools
+
+## Parecido string
 from difflib  import get_close_matches
+
+## Peticiones HTTP
 from requests import get
 
 
-# Funciones que nos ayudarán ======================================================================
+# ==========================================================
+#      CONFIGURACIÓN
+# ==========================================================
+logging.basicConfig(
+    level=logging.DEBUG,
+    filename="app.log",
+    format="%(asctime)s -- %(message)s",
+    datefmt="%d-%b-%y %H:%M:%S"
+)
+
+app = Flask(__name__)
+
+database = MongoClient(info.database_ip)[info.database_name]
+
+
+# ==========================================================
+#      FUNCIONES
+# ==========================================================
+
 def get_data(func: Callable, cache={}, *args, **kwargs) -> Callable: 
     """
     Este decorador sirve para obtener la info del usuario a partir del handler_input
@@ -82,8 +122,8 @@ def check_data(func: Callable, *args, **kwargs) -> Callable:
     def wrapper(*args, **kwargs) -> Response:
         handler_input = args[1]
         data = kwargs.get("data")
-        text = "Por favor, regístrate para poder usar la skill, \
-        solo tienes que decirme 'Estudio' y la titulación que estás cursando"
+        text = "Por favor, regístrate para poder usar la skill, nec esito saber qué titulación \
+        cursas para poder darte información correctamente, solo tienes que decirme 'Estudio'"
 
         if data is None: #si no está registrado, le decimos que lo haga
             return (
@@ -122,9 +162,10 @@ def find(input: str, filtering: None, field: str = "nombre", collection: str = "
     )[0]
 
 
+# ==========================================================
+#      HANDLERS
+# ==========================================================
 
-# Definimos los handlers ==========================================================================
-# ===== Base
 class BaseHandler(AbstractRequestHandler): 
     """Objeto base para los handlers de Amazon, evitamos repetir can_handle"""
 
@@ -144,7 +185,7 @@ class CustomHandler(AbstractRequestHandler):
             self.__class__.__name__.split("Handler")[0]
         )(handler_input)
 
-# ===== Lógica de los handlers
+
 class LaunchRequestHandler(BaseHandler):
     def handle(self, handler_input: HandlerInput, *args, **kwargs) -> Response:
         text =  "Tengo información de: " + \
@@ -225,7 +266,7 @@ class ScheduleIntentHandler(CustomHandler):
         year = ask_utils.request_util.get_slot(handler_input, "YearSlot").value
         logger.info(f"year slot type {type(year)}")
 
-        image = database["horarios"].find_one({"_id": studying]},{"imagen": True})["imagen"]
+        image = database["horarios"].find_one({"_id": studying, "curso": year},{"imagen": True})["imagen"]
 
         text =  "Aquí tienes el horario"
         return (
@@ -363,7 +404,10 @@ class CatchAllExceptionHandler(AbstractExceptionHandler):
         )
 
 
-# Creamos el SkillAdapter a partir de todos los handlers ==========================================
+# ==========================================================
+#      SKILL ADAPTER
+# ==========================================================
+
 skill_builder = SkillBuilder()
 
 skill_builder.add_request_handler(LaunchRequestHandler())
@@ -387,7 +431,11 @@ skill_adapter = SkillAdapter(
     app=app
 )
 
-# Bindeamos la funcionalidad a las rutas del servidor =============================================
+
+# ==========================================================
+#      FLASK
+# ==========================================================
+
 @app.get("/") #hello world al hacer GET
 def hello_world():
     return "Hello world!"
