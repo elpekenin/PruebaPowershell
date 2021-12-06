@@ -64,10 +64,7 @@ def get_data(func: Callable, cache={}, *args, **kwargs) -> Callable:
         #será None si el usuario no está en el sistema
         return func(
             *args,
-            data=database["usuarios"].find_one( 
-                {"_id": user_id},
-                {"_id": False}
-            ),
+            data=database["usuarios"].find_one({"_id": user_id}, {"_id": False}),
             **kwargs,
         )
     return wrapper #devolvemos la función decorada
@@ -171,17 +168,14 @@ class LaunchRequestHandler(BaseHandler):
 class SubjectIntentHandler(CustomHandler):
     @check_data  #para poder filtrar segun su titulación
     def handle(self, handler_input: HandlerInput, *args, **kwargs) -> Response:
-        data = kwargs.get("data")
+        studying = kwargs.get["data"]["estudios"]
 
         #parseamos la asignatura en el slot con la función de búsqueda
-        subject = ask_utils.request_util.get_slot(handler_input, "SubjectSlot").value
-        subject = find(subject, filtering={"_id.id_estudios": data["estudios"]})
+        slot_value = ask_utils.request_util.get_slot(handler_input, "SubjectSlot").value
+        subject = find(slot_value, filtering={"_id.id_estudios": studying})
 
         #obtenemos enlace de la guia docente
-        response = database["asignaturas"].find_one({"nombre": subject}, {"_id": False})
-        url = response['guia_docente']
-
-        logger.info(url)
+        url = database["asignaturas"].find_one({"nombre": subject}, {"_id": False})["guia_docente"]
 
         text =  f"Aquí tienes la guía docente de {subject}"
 
@@ -195,22 +189,16 @@ class SubjectIntentHandler(CustomHandler):
 class TeacherIntentHandler(CustomHandler):
     @check_data
     def handle(self, handler_input: HandlerInput, *args, **kwargs) -> Response:
-        data = kwargs.get("data")
+        studying = kwargs.get["data"]["estudios"]
 
-        #parseamos la asignatura en el slot con la función de búsqueda
-        subject = ask_utils.request_util.get_slot(handler_input, "SubjectSlot").value
-        subject = find(subject, filtering={"_id.id_estudios": data["estudios"]})
+        slot_value = ask_utils.request_util.get_slot(handler_input, "SubjectSlot").value
+        subject = find(slot_value, filtering={"_id.id_estudios": studying})
 
-        #obtenemos el email del profesor
-        response = database["asignaturas"].find_one({"nombre": subject}, {"_id": False})
-        email = response["responsable"]
+        #obtenemos el email y nombre del profesor responsable
+        email = database["asignaturas"].find_one({"nombre": subject}, {"_id": False})["responsable"]
+        teacher = database["profesores"].find_one({"_id": email}, {"nombre": True})["nombre"]
 
-        #y su nombre
-        response = database["profesores"].find_one({"_id": email},{"nombre": True})
-        teacher = response["nombre"]
-
-        text =  f"El profesor responsable de {subjexct} es {teacher}, te mando su mail" + \
-        f"\n\n{email}"
+        text =  f"El profesor responsable de {subject} es {teacher}, te mando su mail\n{email}"
 
         return (
             handler_input.response_builder
@@ -219,44 +207,41 @@ class TeacherIntentHandler(CustomHandler):
                 .response
         )
 
+
 class ScheduleIntentHandler(CustomHandler):
     @check_data
     def handle(self, handler_input: HandlerInput, *args, **kwargs) -> Response:
-        data = kwargs.get("data")
+        studying = kwargs.get["data"]["estudios"]
 
-        #recogemos el valor del slot para filtrar por curso
+        #filtrar por curso
         year = ask_utils.request_util.get_slot(handler_input, "YearSlot").value
-        logger.info(year)
+        logger.info(f"year slot type {type(year)}")
 
-        #TODO imagenes horario en DB, revisar StandardCard
-        response = database["horarios"].find_one({"_id": data["estudios"]},{"imagen": True})
-        image = response["imagen"]
+        image = database["horarios"].find_one({"_id": studying]},{"imagen": True})["imagen"]
 
         text =  "Aquí tienes el horario"
 
         return (
             handler_input.response_builder
                 .speak(text)
-                .set_card(StandardCard("Profesor responsable", text, image))
+                .set_card(StandardCard("Profesor responsable", text, image)) #TODO generar imagenes
                 .response
         )
+
 
 class DatesIntentHandler(CustomHandler):
     @check_data 
     def handle(self, handler_input: HandlerInput, *args, **kwargs) -> Response:
-        data = kwargs.get("data")
+        studying = kwargs.get("data")["estudios"]
+        school = database["estudios"].find_one({"_id": studying}, {"escuela": True})["escuela"]
 
         #valor del slot
         date = ask_utils.request_util.get_slot(handler_input, "DateSlot").value
+        logger.info(f"date slot type {type(date)}")
 
-        #TODO fechas en la base de datos
-        response = database["fechas"].find_one({"_id": data["estudios"]},{"fechas": True})
-        date_range = response[date]
+        dates = database["fechas"].find_one({"_id": data["estudios"]},{date: True})[date]
 
-        text = f"Los dias festivos son {date_range}" #TODO lista larga, a ver que formato doy  
-        if date != "festivo":
-            text =  f"Los {date} son del {date_range[0]} al {date_range[1]}"
-
+        text =  f"Los {date} son del {dates[0]} al {dates[1]}"
 
         return (
             handler_input.response_builder
@@ -264,17 +249,18 @@ class DatesIntentHandler(CustomHandler):
                 .set_card(SimpleCard(date, text))
                 .response
         )
+
 
 class ContactIntentHandler(CustomHandler):
     @check_data
     def handle(self, handler_input: HandlerInput, *args, **kwargs) -> Response:
-        data = kwargs.get("data")
-        studying = data["estudios"]
+        data = kwargs.get("data")["estudios"]
+        school = database["estudios"].find_one({"_id": studying}, {"escuela": True})["escuela"]
 
-        response = database["contacto"].find_one({"_id": studying},{"contacto": True})
-        contact = response["contacto"]
+        #creamos un generador con las formas de contactar
+        contact = (f"{key}: {value}" for key, value in dict(database["contacto"].find_one({"_id": school},{"_id": False})).items())
 
-        text =  f"Las formas de contactar con la secretaría de {studying} son {contact}"
+        text =  f"Las formas de contactar con la secretaría de {studying} son {', '.join(contact)}"
 
         return (
             handler_input.response_builder
@@ -282,6 +268,7 @@ class ContactIntentHandler(CustomHandler):
                 .set_card(SimpleCard(date, text))
                 .response
         )
+
 
 # ===== Default
 class HelpIntentHandler(BaseHandler):
@@ -350,6 +337,7 @@ class IntentReflectorHandler(AbstractRequestHandler):
     def handle(self, handler_input: HandlerInput, *args, **kwargs) -> Response:
         intent_name = ask_utils.get_intent_name(handler_input)
         text =  f"Se ha activado el intent {intent_name}."
+        logger.info(str(handler_input))
 
         return (
             handler_input.response_builder
