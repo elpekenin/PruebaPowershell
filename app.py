@@ -266,7 +266,6 @@ class SignUpIntentHandler(AbstractRequestHandler):
         user_id = get_user_id(handler_input)
         try: 
             database["usuarios"].insert_one({"_id": user_id, "estudios": study})
-
         # si insertar la información da error es porque el usuario ya está en el sistema, actualizamos
         except Exception:
             database["usuarios"].update_one({"_id": user_id}, {"$set": {"estudios": study}})
@@ -369,9 +368,9 @@ class DatesIntentHandler(CustomHandler):
 class ContactIntentHandler(CustomHandler):
     @check_data
     def handle(self, handler_input: HandlerInput, *args, **kwargs) -> Response:
+        # user
         studying = kwargs.get("data")["estudios"]
         school = database["estudios"].find_one({"_id": studying}, {"escuela": True})["escuela"]
-
         # creamos un generador con las formas de contactar
         contact = (f"{k.capitalize()} ({v})" 
         for k, v in dict(database["secretarias"].find_one({"_id": school}, {"_id": False})).items())
@@ -415,7 +414,7 @@ class CancelOrStopIntentHandler(AbstractRequestHandler):
             handler_input.response_builder
             .set_should_end_session(True) # al cancelar o parar, cerramos skill
             .speak(text)
-            .set_card(SimpleCard("Cerrando...", text))
+            .set_card(SimpleCard("Cerrando ...", text))
             .response
         )
 
@@ -424,7 +423,7 @@ class FallbackIntentHandler(BaseHandler):
     amazon = True
 
     def handle(self, handler_input: HandlerInput, *args, **kwargs) -> Response:
-        speech = "Puedes decir 'Ayuda' para ver las opciones disponibles."
+        speech = "Puedes decir 'Ayuda' para ver las opciones disponibles"
         reprompt = "No te entendí. Con qué puedo ayudarte?"
         return (
             handler_input.response_builder
@@ -468,8 +467,7 @@ class CatchAllExceptionHandler(AbstractExceptionHandler):
     def handle(self, handler_input: HandlerInput, exception, *args, **kwargs) -> Response:
         logging.error(exception, exc_info=True)
 
-        text = "No pude hacer lo que has pedido, prueba de nuevo."
-
+        text = "No pude hacer lo que has pedido, prueba de nuevo"
         return (
             handler_input.response_builder
             .set_should_end_session(True)
