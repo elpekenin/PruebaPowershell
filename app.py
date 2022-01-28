@@ -30,7 +30,7 @@ import json
 from pymongo import MongoClient
 
 # Type hinting
-from typing import Union, Dict
+from typing import Dict
 from collections.abc import Callable
 
 # Decoradores
@@ -66,37 +66,42 @@ database = MongoClient(info.database_ip)[info.database_name]
 def get_user_id(handler_input: HandlerInput, cache: Dict[str, str] = {}):
     """
     En la caché guardaremos token:user_id para evitar hacer peticiones extra a LWA
-    Al tener como valor por defecto un diccionario vacío
-    > La función se queda "ligada" a la posicion de memoria donde está ese dict
-    > Conforme lo vayamos editando se guarda la información aunque el valor por 
-    defecto sea vacío
+
+    Al tener como valor por defecto un diccionario vacío, la función se queda ligada
+    a la posicion de memoria donde está ese dict y conforme lo vayamos editando se 
+    guarda la información
     """
 
+    # token del usuario, nos llega en su petición
     token = handler_input.request_envelope.session.user.access_token
 
     if token not in cache:
-            user_id = get(f"https://api.amazon.com/user/profile?access_token={token}").json()["user_id"]
+        # si no tenemos el token en cache, consultamos LWA
+        user_id = get(f"https://api.amazon.com/user/profile?access_token={token}").json()["user_id"]
 
-            # si teníamos el usuario en la caché con otro token, borramos esa entrada
-            for k, v in cache.items():
-                if v == user_id:
-                    cache.pop(k)
-                    break
+        # comprobamos si teníamos el usuario en la caché con otro token y borramos esa entrada
+        for key, value in cache.items():
+            if value == user_id:
+                cache.pop(key)
+                break
 
-            # guardamos
-            cache[token] = user_id
+        # guardamos token:user_id
+        cache[token] = user_id
 
-    return cache[token] #devolvemos el id
+    # devolvemos id del usuario
+    return cache[token] 
+
 
 def get_data(func: Callable, *args, **kwargs) -> Callable:
-    """Este decorador sirve para obtener la info del usuario a partir del handler_input"""
+    """Obtener la info del usuario a partir del handler_input"""
 
     @functools.wraps(func)
-    def wrapper(*args, **kwargs) -> Response:  # creamos función decorada
+    def wrapper(*args, **kwargs) -> Response:
         # args[0] es self porque las funciones que estamos decorando son métodos
         # args[1] es handler_input de donde sacamos la id del usuario
         # > obtenemos el id a partir del JSON entrante
         user_id = get_user_id(args[1])
+
         # a la función decorada le pasamos los datos (un dict) como parámetro
         # será None si el usuario no está en el sistema
         return func(
@@ -104,7 +109,7 @@ def get_data(func: Callable, *args, **kwargs) -> Callable:
             data=database["usuarios"].find_one({"_id": user_id}, {"_id": False}),
             **kwargs,
         )
-    return wrapper  # devolvemos la función decorada
+    return wrapper
 
 
 def check_data(func: Callable, *args, **kwargs) -> Callable:
@@ -115,14 +120,15 @@ def check_data(func: Callable, *args, **kwargs) -> Callable:
     """
 
     @functools.wraps(func)
-    @get_data  # este decorador hace uso de los datos del usuario, asi que se añade ese decorador
+    @get_data
     def wrapper(*args, **kwargs) -> Response:
         handler_input = args[1]
         data = kwargs.get("data")
-        text = "Por favor, regístrate para poder usar la skill, nec esito saber qué titulación \
-        cursas para poder darte información correctamente, solo tienes que decirme 'Registro'"
 
-        if data is None:  # si no está registrado, le decimos que lo haga
+        # si no está registrado, le decimos que lo haga
+        if data is None:
+            text = "Por favor, regístrate para poder usar la skill, necesito saber qué titulación \
+            cursas para poder darte información correctamente, solo tienes que decirme 'Registro'"
             return (
                 handler_input.response_builder
                 .speak(text)
@@ -137,7 +143,7 @@ def check_data(func: Callable, *args, **kwargs) -> Callable:
 
 def find(input_str: str, filtering = None, field: str = "nombre", collection: str = "asignaturas") -> str:
     """
-    Esta función devuelve la cadena más parecida al input encontrada en el campo especificado
+    Devuelve la cadena más parecida al input encontrada en el campo especificado
     de la colección dada
     > se pueden aplicar filtros a la query
     """
@@ -152,10 +158,20 @@ def find(input_str: str, filtering = None, field: str = "nombre", collection: st
     return get_close_matches(
         input_str,
         # lista con todos los valores
-        list((element[field] for element in database[collection].find(filtering, {field: True}))), # !!
+        list((element[field] for element in database[collection].find(filtering, {field: True}))),
         n=1,  # solo queremos un valor
         cutoff=0,  # no buscamos una similaridad mínima, para garantizar encontrar resultado
     )[0]
+
+
+def parse_url(url: str) -> str: 
+    """Elimina algunos caracteres de la URL para evitar errores"""
+    return url.split('://')[1].replace("/", "").replace(".", "")
+
+
+def s3_url(url: str) -> str:
+    """URL de S3 donde se encuentra el archivo"""
+    return f"https://imagenes-tfg.s3.eu-west-3.amazonaws.com/{url}.png"
 
 
 # ==========================================================
@@ -185,13 +201,13 @@ class CustomHandler(AbstractRequestHandler):
 class LaunchRequestHandler(BaseHandler):
     def handle(self, handler_input: HandlerInput, *args, **kwargs) -> Response:
         text = "Tengo información de: " + \
-            "guías docentes, " + \
-            "profesores responsables, " + \
-            "horarios de clase, " + \
-            "fechas de exámenes, " + \
-            "contacto de secretaría " + \
-            "y días festivos" + \
-            "¿Qué quieres consultar?"
+        "guías docentes, " + \
+        "profesores responsables, " + \
+        "horarios de clase, " + \
+        "fechas de exámenes, " + \
+        "contacto de secretaría " + \
+        "y días festivos" + \
+        "¿Qué quieres consultar?"
 
         return (
             handler_input.response_builder
@@ -214,8 +230,6 @@ class SignUpIntentHandler(AbstractRequestHandler):
     def handle(self, handler_input: HandlerInput, *args, **kwargs) -> Response:
         # usamos el atributo para controlar el estado de la conversacion
         attributes = handler_input.request_envelope.session.attributes
-        logging.info("====== Atributos ======")
-        logging.info(attributes)
 
         card_title = "Registro"
 
@@ -227,7 +241,7 @@ class SignUpIntentHandler(AbstractRequestHandler):
             schools = (school["_id"] for school in database["secretarias"].find({}, {}))
 
             text = f"Las distintas escuelas son: {', '.join(schools)}, ¿en cuál estudias? \
-                Por favor, contesta diciendo 'Estudio en ...'" 
+            Por favor, contesta diciendo 'Estudio en ...'" 
             return (
                 handler_input.response_builder
                 .set_should_end_session(False)
@@ -247,7 +261,7 @@ class SignUpIntentHandler(AbstractRequestHandler):
             studies = (study["nombre"] for study in database["estudios"].find({"escuela": school}, {"nombre": True}))
 
             text = f"Los estudios en la escuela {school} son: {', '.join(studies)}, ¿cual es el tuyo? \
-                Por favor, contesta 'Estudio ....'"
+            Por favor, contesta 'Estudio ....'"
             return (
                 handler_input.response_builder
                 .set_should_end_session(False)
@@ -271,11 +285,12 @@ class SignUpIntentHandler(AbstractRequestHandler):
             database["usuarios"].update_one({"_id": user_id}, {"$set": {"estudios": study}})
 
         text = f"Vale, he registrado que estudias {study_name}({study}), si en algún momento quieres editar \
-            esta información, puedes repetir el proceso de registro"          
+        esta información, puedes repetir el proceso de registro"          
         return (
             handler_input.response_builder
             .set_should_end_session(False)
             .speak(text)
+            .set_card(SimpleCard(card_title, text))
             .response
         )
 
@@ -284,7 +299,7 @@ class SubjectIntentHandler(CustomHandler):
     @check_data  # para poder filtrar segun su titulación
     def handle(self, handler_input: HandlerInput, *args, **kwargs) -> Response:
         # datos del usuario
-        studying = kwargs.get["data"]["estudios"]
+        studying = kwargs.get("data")["estudios"]
         # datos del slot
         slot_value = ask_utils.request_util.get_slot(handler_input, "SubjectSlot").value
         subject = find(slot_value, filtering={"_id.id_estudios": studying})
@@ -296,7 +311,7 @@ class SubjectIntentHandler(CustomHandler):
             handler_input.response_builder
             .set_should_end_session(False)
             .speak(text)
-            .set_card(SimpleCard("Guía docente", text))  # TODO standardcard
+            .set_card(StandardCard("Guía docente", text, Image(s3_url(parse_url(url)))))
             .response
         )
 
@@ -305,7 +320,7 @@ class TeacherIntentHandler(CustomHandler):
     @check_data
     def handle(self, handler_input: HandlerInput, *args, **kwargs) -> Response:
         # user
-        studying = kwargs.get["data"]["estudios"]
+        studying = kwargs.get("data")["estudios"]
         # slot
         slot_value = ask_utils.request_util.get_slot(handler_input, "SubjectSlot").value
         subject = find(slot_value, filtering={"_id.id_estudios": studying})
@@ -327,18 +342,17 @@ class ScheduleIntentHandler(CustomHandler):
     @check_data
     def handle(self, handler_input: HandlerInput, *args, **kwargs) -> Response:
         # user
-        studying = kwargs.get["data"]["estudios"]
+        studying = kwargs.get("data")["estudios"]
         # slot
-        year = ask_utils.request_util.get_slot(handler_input, "YearSlot").value # es int
-        # imagen del horario
-        image = database["horarios"].find_one({"_id": studying, "curso": year}, {"imagen": True})["imagen"]
+        year = ask_utils.request_util.get_slot(handler_input, "YearSlot").value
 
-        text = f"Aquí tienes el horario de {year}º de {studying}"
+        text = f"Aquí tienes el horario de {year}º"
+        image = Image(large_image_url=s3_url(f"{studying}-{year}"))
         return (
             handler_input.response_builder
             .set_should_end_session(False)
             .speak(text)
-            .set_card(StandardCard("Horario", text, image))  # TODO generar imagenes
+            .set_card(StandardCard("Horario", text, image))
             .response
         )
 
@@ -348,14 +362,13 @@ class DatesIntentHandler(CustomHandler):
     def handle(self, handler_input: HandlerInput, *args, **kwargs) -> Response:
         # user
         studying = kwargs.get("data")["estudios"]
-        school = database["estudios"].find_one({"_id": studying}, {"escuela": True})["escuela"]
         # slot
         date = ask_utils.request_util.get_slot(handler_input, "DateSlot").value
         logging.info(f"date slot type {type(date)}")
         # información
         dates = database["fechas"].find_one({"_id": studying}, {date: True})[date]
 
-        text = f"Los {date} son del {dates[0]} al {dates[1]}"
+        text = f"Los {date} son {dates}"
         return (
             handler_input.response_builder
             .set_should_end_session(False)
@@ -423,23 +436,26 @@ class FallbackIntentHandler(BaseHandler):
     amazon = True
 
     def handle(self, handler_input: HandlerInput, *args, **kwargs) -> Response:
-        speech = "Puedes decir 'Ayuda' para ver las opciones disponibles"
-        reprompt = "No te entendí. Con qué puedo ayudarte?"
+        text = "Puedes decir 'Ayuda' para ver las opciones disponibles"
         return (
             handler_input.response_builder
-            .set_should_end_session(True) # si hay un error cerramos
-            .speak(speech)
+            .set_should_end_session(False)
+            .speak(text)
+            .set_card(SimpleCard("Error", text))
             .response
         )
 
 
 class SessionEndedRequestHandler(BaseHandler):
     def handle(self, handler_input: HandlerInput, *args, **kwargs) -> Response:
-        # Any cleanup logic goes here.
+        # Si se extiende la funcionalidad de la skill, aquí se debería añadir
+        # limpieza de datos temporales  
+        text = "Hasta luego"
         return (
             handler_input.response_builder
-            .set_should_end_session(True)
-            .speak("Cerrando")
+            .set_should_end_session(True) # al cancelar o parar, cerramos skill
+            .speak(text)
+            .set_card(SimpleCard("Cerrando ...", text))
             .response
         )
 
@@ -496,7 +512,8 @@ skill_builder.add_request_handler(CancelOrStopIntentHandler())
 skill_builder.add_request_handler(FallbackIntentHandler())
 skill_builder.add_request_handler(SessionEndedRequestHandler())
 
-skill_builder.add_request_handler(IntentReflectorHandler())  # último para que no sobre-escriba
+# último para que no sobre-escriba
+skill_builder.add_request_handler(IntentReflectorHandler())  
 skill_builder.add_exception_handler(CatchAllExceptionHandler())
 
 skill_adapter = SkillAdapter(
@@ -518,7 +535,3 @@ def hello_world():
 @app.post("/")  # atiende peticiones POST
 def invoke_skill():
     return skill_adapter.dispatch_request()
-
-
-if __name__ == "__main__":
-    pass
